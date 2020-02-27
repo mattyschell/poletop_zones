@@ -173,3 +173,47 @@ and n.name = 'B'
 ![friends2](work/step9.png)
 
 
+10. Create pole table and import from smaller .csv /work/MTF_Locations_deletecols.csv
+
+(used a GUI tool for the import, should get /copy working) 
+
+```sql
+create table opendata_poles ( 
+    id integer primary key
+   ,latitude numeric
+   ,longitude numeric
+   ,zone varchar(1)
+   ,franchisee varchar(256));
+```
+
+11. Create table for poles who are in new zones and insert poles
+
+```sql
+create table delta_poles ( 
+    id integer primary key
+   ,oldzone varchar(1)
+   ,newzone varchar(1)
+   ,franchisee varchar(256)
+   ,geometry geometry(POINT, 4326) NULL
+   );
+create index if not exists delta_polesgeometry on delta_poles using GIST(geometry);
+alter table delta_poles alter column geometry set not null;
+insert into delta_poles
+    (id
+    ,oldzone
+    ,newzone
+    ,franchisee
+    ,geometry)
+select o.id
+      ,o.zone as oldzone
+      ,n.name as newzone
+      ,o.franchisee
+      ,ST_SetSRID(ST_Point(o.longitude,o.latitude), 4326) as geometry
+from
+    newzones n
+   ,opendata_poles o
+where ST_Intersects(n.geometry
+                   ,ST_SetSRID( ST_Point( o.longitude, o.latitude), 4326))
+and o.zone != n.name
+```
+![finalanswer](work/finalanswer.png)
