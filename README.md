@@ -88,6 +88,8 @@ alter table newzones alter column geometry set not null;
 
 Use the old +/- buffer trick to remove gaps.
 
+.000001 degrees is approximately .1 meters or 4 inches.  Safe.
+
 ```sql
 insert into newzones (name, geometry)
 SELECT 'C',
@@ -112,7 +114,7 @@ where boro_cd IN (201,202,204,205,207,313,316);
 
 ```sql
 insert into newzones (name, geometry)
-SELECT 'B',
+SELECT 'BSTEM',
        st_buffer(st_buffer(ST_Multi(ST_Union(geometry)),.000001,'join=mitre'),(0-.000001),'join=mitre')  geom
      FROM community_districts
 where boro_cd IN (110,111,203,206,211,303,304,305)
@@ -138,23 +140,17 @@ from
 where
     o.name = 'Zone B'
 and n.name = 'C'
-and nn.name = 'B'
+and nn.name = 'BSTEM'
 ```
 
-8. Remove stem cell zone B and gaps in final zone B. 
+8. Remove stem cell zone B
 
 ```sql
-delete from newzones
-where 
-   objectid = (select min(objectid) from newzones where name = 'B');
-update newzones
-set
-    geometry = st_buffer(st_buffer(geometry,.001,'join=mitre'),(0-.001),'join=mitre')
-where 
-    name = 'B';
+delete from newzones name = 'BSTEM'
 ```
 
-9. Add Zone A, subtract where new Zones B and C specified by community districts overlap.
+9. Add original zone A which is specially defined in the contract along 96th 
+street. Subtract any Zone A overlap from new zone B and C. new Zones B and C specified by community districts overlap.
 
 ```sql
 insert into newzones (
@@ -162,18 +158,73 @@ insert into newzones (
    ,geometry
 ) select
     'A'
-    ,ST_MULTI(ST_UNION(ST_Difference(o.geometry, n.geometry)))
+    ,ST_MULTI(ST_UNION(o.geometry))
 from 
     oldzones o
-   ,newzones n
 where 
-    o.name = 'Zone A'
-and n.name = 'B'
+    o.name = 'Zone A';
+update newzones 
+set geometry = (
+    select 
+        st_difference(c.geometry, a.geometry)
+    from 
+        newzones a
+       ,newzones c
+    where
+        a.name = 'A'
+    and c.name = 'C'
+) where name = 'C';
+update newzones 
+set geometry = (
+    select 
+        st_multi(st_difference(c.geometry, a.geometry))
+    from 
+        newzones a
+       ,newzones c
+    where
+        a.name = 'A'
+    and c.name = 'B'
+) where name = 'B'
 ```
 ![friends2](work/step9.png)
 
 
-10. Create pole table and import from smaller .csv /work/MTF_Locations_deletecols.csv
+10. Attempt to remove interior rings in Zone B. 
+
+```sql
+--look at the areas of the rings, should be 2 big, rest small
+SELECT b.the_geom AS final_geom, ST_Area(b.the_geom) AS area
+  FROM (SELECT (ST_DumpRings(a.geom)).geom AS the_geom
+          FROM (SELECT ST_GeometryN(geometry, generate_series(1, ST_NumGeometries(geometry))) AS geom 
+                FROM newzones where name = 'B') a
+        ) b
+order by area desc;
+--thanks Simon https://spatialdbadvisor.com/postgis_tips_tricks/92/filtering-rings-in-polygon-postgis
+CREATE OR REPLACE FUNCTION upgis_filter_rings(geometry,FLOAT) RETURNS geometry AS
+$$ SELECT ST_BuildArea(ST_Collect(d.built_geom)) AS filtered_geom
+     FROM (SELECT ST_BuildArea(ST_Collect(c.geom)) AS built_geom
+             FROM (SELECT b.geom
+                     FROM (SELECT (ST_DumpRings(ST_GeometryN(ST_Multi($1),/*ST_Multi converts any Single Polygons to MultiPolygons */
+                                                            generate_series(1,ST_NumGeometries(ST_Multi($1)) )
+                                                            ))).*
+                           ) b
+                    WHERE b.path[1] = 0 OR
+                         (b.path[1] > 0 AND ST_Area(b.geom) > $2)
+                   ) c
+           ) d
+$$
+  LANGUAGE 'sql' IMMUTABLE;
+--remove slivers  
+update newzones set geometry = (
+    select ST_MULTI(upgis_filter_rings(a.geometry,.00005))
+    from 
+        newzones a 
+    where a.name = 'B'
+) where name = 'B'; 
+ drop function upgis_filter_rings;
+```
+
+11. Create pole table and import from smaller .csv /work/MTF_Locations_deletecols.csv
 
 (used a GUI tool for the import, should get /copy working) 
 
