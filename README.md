@@ -267,4 +267,14 @@ where ST_Intersects(n.geometry
                    ,ST_SetSRID( ST_Point( o.longitude, o.latitude), 4326))
 and o.zone != n.name
 ```
+
+12. Manual fixes
+
+* South side of Zone C in Brooklyn: remove 3 gaps
+    * Used community district boundaries as the truth
+* Zone A NE Corner (Community District 108 crossing into E river): remove 3 gaps
+    * This is the spot where legacy poletop zone geometries are the truth
+* Zone C in the Bronx: Many manual cleanups
+
+
 ![finalanswer](work/finalanswer.png)
