@@ -16,6 +16,10 @@ used in Google Earth.
 Inside the "shp" folder is the same data in shapefile format, commonly used in
 desktop GIS software like [QGIS](https://www.qgis.org/en/site/) and ESRI's ArcMap.
 
+Inside the "geojson_2263" folder is the same zones geojson in New York State 
+Plane coordinates (https://epsg.io/2263).  The geojson spec does not technically 
+support this coordinate reference system so you should not use this unless 
+you know what it is.
 
 
 ## Work Details
